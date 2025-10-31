@@ -1,0 +1,5 @@
+{
+  "name": "Ai Content Factory",
+  "description": "An application that uses Gemini to generate articles and images based on user prompts. Users can opt for fully automatic generation or provide their own images for the AI to write content about.",
+  "requestFramePermissions": []
+}

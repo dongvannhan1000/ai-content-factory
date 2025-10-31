@@ -1,0 +1,436 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { auth, db } from './firebase';
+// FIX: Use firebase v8 compat imports and syntax.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
+import {
+  Article,
+  GeneratedArticleText,
+  GeneratedArticleTextFromImage,
+  GenerationMode,
+  ScheduledArticle,
+  User,
+  GenerationJob,
+} from './types';
+import {
+  generateArticleFromImage,
+  generateArticleFromWebsite,
+  generateArticlesFromTopic,
+  generateImage,
+  regenerateArticleText,
+} from './services/geminiService';
+import { useScheduler } from './hooks/useScheduler';
+
+import { AuthPage } from './components/AuthPage';
+import { SideNav } from './components/SideNav';
+import { GeneratorForm } from './components/GeneratorForm';
+import { Loader } from './components/Loader';
+import { ArticleCard } from './components/ArticleCard';
+import { ScheduleView } from './components/ScheduleView';
+import { ScheduleModal } from './components/ScheduleModal';
+import { SystemPromptModal } from './components/SystemPromptModal';
+import { WebhookModal } from './components/WebhookModal';
+import { BatchProgressView } from './components/BatchProgressView';
+
+
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [initializing, setInitializing] = useState(true);
+
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingTotal, setLoadingTotal] = useState(0);
+  const [generationJobs, setGenerationJobs] = useState<GenerationJob[]>([]);
+  const [isBatchJobRunning, setIsBatchJobRunning] = useState(false);
+  const [completedJobId, setCompletedJobId] = useState<string | null>(null);
+  const [currentBatchJobId, setCurrentBatchJobId] = useState<string | null>(null);
+  const isBatchJobRunningRef = useRef(false);
+
+  const [currentView, setCurrentView] = useState<'generator' | 'schedule'>('generator');
+  const [scheduleModalArticle, setScheduleModalArticle] = useState<Article | ScheduledArticle | null>(null);
+  const [isSystemPromptModalOpen, setIsSystemPromptModalOpen] = useState(false);
+  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
+
+  const [systemPrompt, setSystemPrompt] = useState('You are an expert social media manager specializing in viral content.');
+  const [webhookUrl, setWebhookUrl] = useState('');
+
+  const { scheduledArticles, scheduleArticle, unscheduleArticle } = useScheduler(user);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data() as User;
+          const fullUser = { ...userData, uid: firebaseUser.uid, email: firebaseUser.email };
+          setUser(fullUser);
+          setSystemPrompt(userData.systemPrompt || 'You are an expert social media manager specializing in viral content.');
+          setWebhookUrl(userData.webhookUrl || '');
+        } else {
+          const newUser: User = { uid: firebaseUser.uid, email: firebaseUser.email! };
+          await db.collection('users').doc(firebaseUser.uid).set(newUser, { merge: true });
+          setUser(newUser);
+        }
+      } else {
+        setUser(null);
+      }
+      setInitializing(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setGenerationJobs([]);
+      setIsBatchJobRunning(false);
+      return;
+    }
+
+    const jobsCollection = db.collection('generation_jobs');
+    const q = jobsCollection
+        .where('userId', '==', user.uid)
+        .where('status', 'in', ['pending', 'processing']);
+
+    const unsubscribe = q.onSnapshot(snapshot => {
+        const jobs: GenerationJob[] = [];
+        snapshot.forEach(doc => {
+            jobs.push({ docId: doc.id, ...doc.data() } as GenerationJob);
+        });
+        
+        // Check if a batch job just completed
+        if (isBatchJobRunningRef.current && jobs.length === 0 && currentBatchJobId) {
+            console.log('[Job Listener] Job completed, setting completedJobId:', currentBatchJobId);
+            setCompletedJobId(currentBatchJobId);
+            setCurrentBatchJobId(null); // Clear current job ID
+        }
+
+        setGenerationJobs(jobs);
+        const isRunning = jobs.length > 0;
+        setIsBatchJobRunning(isRunning);
+        isBatchJobRunningRef.current = isRunning;
+    });
+
+    return () => unsubscribe();
+}, [user, currentBatchJobId]);
+  
+  // Listen for generated articles from completed batch job
+  useEffect(() => {
+    if (!user || !completedJobId) {
+      return;
+    }
+
+    console.log('[Articles Listener] Starting listener for jobId:', completedJobId);
+    
+    const articlesCollection = db.collection('generated_articles');
+    const q = articlesCollection
+        .where('userId', '==', user.uid)
+        .where('jobId', '==', completedJobId);
+
+    const unsubscribe = q.onSnapshot(snapshot => {
+        console.log('[Articles Listener] Snapshot received, size:', snapshot.size);
+        const batchArticles: Article[] = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            console.log('[Articles Listener] Article doc:', doc.id, data);
+            batchArticles.push({
+                id: doc.id, // Use Firestore doc ID as article ID
+                title: data.title,
+                content: data.content,
+                imageUrl: data.imageUrl,
+                imagePrompt: data.imagePrompt,
+                topic: data.topic,
+            });
+        });
+        
+        console.log('[Articles Listener] Setting articles, count:', batchArticles.length);
+        setArticles(batchArticles);
+        // Always set isLoading to false when we get results, even if empty
+        setIsLoading(false);
+    }, (error) => {
+        console.error('[Articles Listener] Error:', error);
+        setIsLoading(false);
+    });
+
+    return () => {
+        console.log('[Articles Listener] Cleaning up listener for jobId:', completedJobId);
+        unsubscribe();
+    };
+  }, [user, completedJobId]);
+  
+  const handleGenerate = async (mode: GenerationMode, data: any, count: number) => {
+    setIsLoading(true);
+    setLoadingProgress(0);
+    setArticles([]);
+    setCompletedJobId(null);
+    setCurrentBatchJobId(null);
+
+    // Logic for batch generation via Cloud Function
+    if (mode === 'topic' && count > 1) {
+        if (!user) {
+            alert("You must be logged in to start a batch job.");
+            setIsLoading(false);
+            return;
+        }
+        try {
+            const jobDoc = await db.collection('generation_jobs').add({
+                userId: user.uid,
+                topic: data.topic,
+                count: count,
+                language: data.language,
+                systemPrompt: systemPrompt,
+                status: 'pending',
+                progress: 0,
+                // FIX: Use server timestamp to avoid client/server time issues.
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            setCurrentBatchJobId(jobDoc.id);
+            // No alert needed, the progress view will appear automatically.
+        } catch (error) {
+            console.error("Could not submit the generation job:", error);
+            alert("Could not submit the generation job. Please check the console and try again.");
+            setIsLoading(false);
+        }
+        return;
+    }
+
+    // Logic for single/interactive generation
+    try {
+        if (mode === 'topic') {
+            setLoadingTotal(count);
+            const generatedTexts = await generateArticlesFromTopic(data.topic, count, data.language, systemPrompt);
+            const newArticles: Article[] = [];
+            for (const text of generatedTexts) {
+                const imageUrl = await generateImage(text.imagePrompt);
+                newArticles.push({
+                    id: uuidv4(),
+                    ...text,
+                    imageUrl,
+                    topic: data.topic,
+                });
+                setLoadingProgress(prev => prev + 1);
+            }
+            setArticles(newArticles);
+        } else {
+            setLoadingTotal(1);
+            let generatedText: GeneratedArticleTextFromImage;
+            if (mode === 'image') {
+                generatedText = await generateArticleFromImage(data.image, systemPrompt);
+            } else { // website
+                generatedText = await generateArticleFromWebsite(data.websiteUrl, systemPrompt);
+            }
+            const imageUrl = await generateImage(generatedText.imagePrompt);
+            setArticles([{
+                id: uuidv4(),
+                ...generatedText,
+                imageUrl,
+            }]);
+            setLoadingProgress(1);
+        }
+    } catch (error: any) {
+        console.error("Content generation failed:", error);
+        let errorMessage = "An error occurred during content generation. Please check the console for details.";
+        // FIX: Add specific error handling for invalid API key (404 Not Found).
+        if (typeof error.message === 'string' && error.message.includes("Requested entity was not found")) {
+            errorMessage = "Content generation failed (Error 404: Not Found).\n\nThis usually means the API key is invalid, has been deleted, or is not configured for this project.\n\nPlease verify your API key and project settings in the Google Cloud Console.";
+        }
+        alert(errorMessage);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  const handleRegenerateText = async (article: Article): Promise<GeneratedArticleText> => {
+      // This function is now responsible for the API call AND state update.
+      // The try/catch will be handled by the calling component (ArticleCard).
+      const newText = await regenerateArticleText(article, systemPrompt);
+      setArticles(articles.map(a => a.id === article.id ? { ...a, ...newText } : a));
+      return newText;
+  };
+
+  const handleRegenerateImage = async (article: Article): Promise<string> => {
+      // This function is now responsible for the API call AND state update.
+      // The try/catch will be handled by the calling component (ArticleCard).
+      const newImageUrl = await generateImage(article.imagePrompt!);
+      setArticles(articles.map(a => a.id === article.id ? { ...a, imageUrl: newImageUrl } : a));
+      return newImageUrl;
+  };
+
+  const handleDelete = async (id: string) => {
+      setArticles(articles.filter(a => a.id !== id));
+      // Also delete from generated_articles collection if it exists there
+      if (user && completedJobId) {
+          try {
+              await db.collection('generated_articles').doc(id).delete();
+          } catch (error) {
+              console.error("Error deleting generated article:", error);
+          }
+      }
+  };
+  
+  const handleSchedule = (article: Article | ScheduledArticle) => {
+      setScheduleModalArticle(article);
+  };
+
+  const handleConfirmSchedule = async (article: Article | ScheduledArticle, date: number) => {
+      scheduleArticle(article, date);
+      // If it was a newly generated article, remove it from the main view AND delete from generated_articles
+      if (!('docId' in article)) {
+          setArticles(prev => prev.filter(a => a.id !== article.id));
+          // Delete from generated_articles collection
+          if (user && completedJobId) {
+              try {
+                  await db.collection('generated_articles').doc(article.id).delete();
+              } catch (error) {
+                  console.error("Error deleting generated article:", error);
+              }
+          }
+      }
+      setScheduleModalArticle(null);
+  };
+
+  const handlePostNow = async (article: Article) => {
+    if (!webhookUrl) {
+      alert("Please set a Webhook URL in the settings first.");
+      throw new Error("Webhook URL is not set.");
+    }
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: article.title,
+          content: article.content,
+          imageUrl: article.imageUrl,
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Webhook failed with status ${response.status}: ${errorBody}`);
+      }
+      alert("Article posted successfully!");
+      handleDelete(article.id);
+    } catch (error) {
+      console.error("Failed to post article:", error);
+      alert(`Failed to post article. See console for details.`);
+      throw error;
+    }
+  };
+
+  const handleLogout = () => {
+    auth.signOut();
+  };
+
+  const handleSaveSystemPrompt = async (newPrompt: string) => {
+    if (!user) return;
+    setSystemPrompt(newPrompt);
+    await db.collection('users').doc(user.uid).update({ systemPrompt: newPrompt });
+    setIsSystemPromptModalOpen(false);
+  };
+  
+  const handleSaveWebhook = async (newWebhook: string) => {
+    if (!user) return;
+    setWebhookUrl(newWebhook);
+    await db.collection('users').doc(user.uid).update({ webhookUrl: newWebhook });
+    setIsWebhookModalOpen(false);
+  };
+
+  const handleCancelJob = async (jobId: string) => {
+    if (!user) return;
+    try {
+        await db.collection('generation_jobs').doc(jobId).update({
+            status: 'cancelled',
+        });
+    } catch (error) {
+        console.error("Failed to cancel job:", error);
+        alert("Could not cancel the job. Please try again.");
+    }
+  };
+
+  if (initializing) {
+    return (
+      <div className="bg-slate-900 min-h-screen flex items-center justify-center text-white">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-500"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  return (
+    <div className="bg-slate-900 min-h-screen text-slate-200">
+        <SideNav
+            user={user}
+            onLogout={handleLogout}
+            onSetSystemPrompt={() => setIsSystemPromptModalOpen(true)}
+            systemPrompt={systemPrompt}
+            currentView={currentView}
+            onSetView={setCurrentView}
+            onSetWebhook={() => setIsWebhookModalOpen(true)}
+            webhookUrl={webhookUrl}
+        />
+        <main className="pl-16 sm:pl-64">
+            <div className="p-4 sm:p-8">
+                {currentView === 'generator' && (
+                    <div className="space-y-8">
+                        <GeneratorForm onGenerate={handleGenerate} isLoading={isLoading || isBatchJobRunning} />
+                        {isLoading && !isBatchJobRunning ? (
+                            <Loader progress={loadingProgress} total={loadingTotal} />
+                        ) : isBatchJobRunning ? (
+                           <BatchProgressView jobs={generationJobs} onCancel={handleCancelJob} />
+                        ) : articles.length > 0 && (
+                            <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                                {articles.map(article => (
+                                    <ArticleCard
+                                        key={article.id}
+                                        article={article}
+                                        onRegenerateText={handleRegenerateText}
+                                        onRegenerateImage={handleRegenerateImage}
+                                        onSchedule={handleSchedule}
+                                        onDelete={handleDelete}
+                                        onPostNow={handlePostNow}
+                                    />
+                                ))}
+                            </section>
+                        )}
+                    </div>
+                )}
+                {currentView === 'schedule' && (
+                    <ScheduleView
+                      articles={scheduledArticles}
+                      onEdit={handleSchedule}
+                      onUnschedule={unscheduleArticle}
+                    />
+                )}
+            </div>
+        </main>
+
+        {scheduleModalArticle && (
+            <ScheduleModal
+                article={scheduleModalArticle}
+                onClose={() => setScheduleModalArticle(null)}
+                onSchedule={handleConfirmSchedule}
+            />
+        )}
+        
+        <SystemPromptModal
+            isOpen={isSystemPromptModalOpen}
+            currentPrompt={systemPrompt}
+            onSave={handleSaveSystemPrompt}
+            onClose={() => setIsSystemPromptModalOpen(false)}
+        />
+
+        <WebhookModal
+            isOpen={isWebhookModalOpen}
+            currentWebhook={webhookUrl}
+            onSave={handleSaveWebhook}
+            onClose={() => setIsWebhookModalOpen(false)}
+        />
+    </div>
+  );
+}
+
+export default App;
