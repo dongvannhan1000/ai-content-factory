@@ -405,8 +405,6 @@ const handleRegenerateImage = async (article: Article, customPrompt?: string): P
                                     <ArticleCard
                                         key={article.id}
                                         article={article}
-                                        onRegenerateText={handleRegenerateText}
-                                        onRegenerateImage={handleRegenerateImage}
                                         onSchedule={handleSchedule}
                                         onDelete={handleDelete}
                                         onPostNow={handlePostNow}

@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { Article, GeneratedArticleText, GeneratedArticleTextFromImage } from '../types';
-import { regenerateImagePrompt } from '@/services/geminiService';
+import { Article } from '../types';
+import { generateImage, regenerateArticleText, regenerateImagePrompt } from '@/services/geminiService';
 
 interface ArticleCardProps {
   article: Article;
-  onRegenerateText: (article: Article, customPrompt?: string) => Promise<GeneratedArticleText | GeneratedArticleTextFromImage>;
-  onRegenerateImage: (article: Article, customPrompt?: string) => Promise<string>;
   onSchedule: (article: Article) => void;
   onDelete: (id: string) => void;
   onPostNow: (article: Article) => Promise<void>;
@@ -14,8 +12,6 @@ interface ArticleCardProps {
 
 export const ArticleCard: React.FC<ArticleCardProps> = ({ 
   article, 
-  onRegenerateText, 
-  onRegenerateImage, 
   onSchedule, 
   onDelete, 
   onPostNow,
@@ -48,7 +44,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     setShowTextPromptModal(false);
     setIsRegeneratingText(true);
     try {
-      const newText = await onRegenerateText(currentArticle, customPrompt);
+      const newText = await regenerateArticleText(currentArticle, customPrompt);
       setCurrentArticle(prev => ({ ...prev, ...newText }));
     } catch (error) {
       const errorMessage = handleApiError(error);
@@ -71,8 +67,9 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     setShowImagePromptModal(false);
     setIsRegeneratingImage(true);
     try {
-      const newImageUrl = await onRegenerateImage(currentArticle, customPrompt);
+      
       const newImagePrompt = await regenerateImagePrompt(article, customPrompt);
+      const newImageUrl = await generateImage(newImagePrompt);
       setCurrentArticle(prev => ({ ...prev, imageUrl: newImageUrl, imagePrompt: newImagePrompt }));
     } catch (error) {
         const errorMessage = handleApiError(error);
