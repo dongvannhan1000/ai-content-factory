@@ -133,6 +133,36 @@ export const generateImage = async (prompt: string): Promise<string> => {
   return `data:image/jpeg;base64,${base64ImageBytes}`;
 };
 
+export const regenerateImagePrompt = async (article: Article, systemInstruction: string): Promise<string> => {
+    const prompt = `Regenerate the image prompt for the following social media post.
+    Title: ${article.title}
+    Content: ${article.content}
+    Original Image Prompt: ${article.imagePrompt || 'not specified'}
+    Topic (optional): ${article.topic || 'not specified'}
+    
+    Create a descriptive and detailed image prompt that captures the essence of this post.`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: prompt,
+        config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    imagePrompt: { type: Type.STRING },
+                },
+                required: ['imagePrompt'],
+            },
+        }
+    });
+    
+    const jsonText = response.text.trim();
+    const result = JSON.parse(jsonText);
+    return result.imagePrompt;
+};
+
 
 // Helper function to convert a File object to a base64 string
 const fileToBase64 = (file: File): Promise<string> => {

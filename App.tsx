@@ -19,6 +19,7 @@ import {
   generateArticlesFromTopic,
   generateImage,
   regenerateArticleText,
+  regenerateImagePrompt,
 } from './services/geminiService';
 import { useScheduler } from './hooks/useScheduler';
 
@@ -241,21 +242,38 @@ function App() {
     }
   };
 
-  const handleRegenerateText = async (article: Article): Promise<GeneratedArticleText> => {
-      // This function is now responsible for the API call AND state update.
-      // The try/catch will be handled by the calling component (ArticleCard).
-      const newText = await regenerateArticleText(article, systemPrompt);
-      setArticles(articles.map(a => a.id === article.id ? { ...a, ...newText } : a));
-      return newText;
-  };
+  const handleRegenerateText = async (article: Article, customPrompt?: string): Promise<GeneratedArticleText> => {
+    // Use custom prompt if provided, otherwise fall back to system prompt
+    const promptToUse = customPrompt || systemPrompt;
+    
+    // This function is now responsible for the API call AND state update.
+    // The try/catch will be handled by the calling component (ArticleCard).
+    const newText = await regenerateArticleText(article, promptToUse);
+    setArticles(articles.map(a => a.id === article.id ? { ...a, ...newText } : a));
+    return newText;
+};
 
-  const handleRegenerateImage = async (article: Article): Promise<string> => {
-      // This function is now responsible for the API call AND state update.
-      // The try/catch will be handled by the calling component (ArticleCard).
-      const newImageUrl = await generateImage(article.imagePrompt!);
-      setArticles(articles.map(a => a.id === article.id ? { ...a, imageUrl: newImageUrl } : a));
-      return newImageUrl;
-  };
+const handleRegenerateImage = async (article: Article, customPrompt?: string): Promise<string> => {
+    // Use custom prompt if provided, otherwise fall back to system prompt
+    const promptToUse = customPrompt || systemPrompt;
+    
+    // This function is now responsible for the API call AND state update.
+    // The try/catch will be handled by the calling component (ArticleCard).
+    
+    // For image generation, we need to regenerate the image prompt first with the custom prompt
+    // then generate the image from that new prompt
+    const newImagePrompt = await regenerateImagePrompt(article, promptToUse);
+    console.log('newImagePrompt', newImagePrompt)
+    const newImageUrl = await generateImage(newImagePrompt);
+    
+    setArticles(articles.map(a => a.id === article.id ? { 
+        ...a, 
+        imageUrl: newImageUrl,
+        imagePrompt: newImagePrompt 
+    } : a));
+    
+    return newImageUrl;
+};
 
   const handleDelete = async (id: string) => {
       setArticles(articles.filter(a => a.id !== id));
