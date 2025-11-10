@@ -3,6 +3,7 @@
 // Sử dụng các import của Firebase Functions v2 hiện đại.
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -49,6 +50,289 @@ interface GenerationJob {
     status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 }
 
+
+// ============================================================================
+// CALLABLE FUNCTIONS FOR FRONTEND
+// ============================================================================
+
+/**
+ * Generate articles from a topic (single or multiple)
+ */
+export const generateArticlesFromTopic = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  const { topic, count, language, systemPrompt } = request.data;
+  
+  if (!topic || !count || !language) {
+    throw new HttpsError('invalid-argument', 'Missing required parameters');
+  }
+
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+  
+  const articleSchema = {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING, description: 'A catchy and engaging title for the social media post.' },
+      content: { type: Type.STRING, description: 'The main body of the post, formatted for readability on social platforms.' },
+      imagePrompt: { type: Type.STRING, description: 'A detailed, creative prompt for an AI image generator to create a visually appealing image that matches the post.' },
+    },
+    required: ['title', 'content', 'imagePrompt'],
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: `Generate ${count} social media posts about the following topic: "${topic}". The posts must be written in ${language}.`,
+      config: {
+        systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: articleSchema,
+        },
+      },
+    });
+
+    const jsonText = response.text?.trim();
+    const articles = JSON.parse(jsonText!);
+    return { articles };
+  } catch (error: any) {
+    logger.error('Error generating articles from topic:', error);
+    throw new HttpsError('internal', error.message || 'Failed to generate articles');
+  }
+});
+
+/**
+ * Generate article from an image
+ */
+export const generateArticleFromImage = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  const { imageData, mimeType, systemPrompt } = request.data;
+  
+  if (!imageData || !mimeType) {
+    throw new HttpsError('invalid-argument', 'Missing image data or mime type');
+  }
+
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+  
+  const articleSchema = {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING },
+      content: { type: Type.STRING },
+      imagePrompt: { type: Type.STRING },
+    },
+    required: ['title', 'content', 'imagePrompt'],
+  };
+
+  try {
+    const imagePart = {
+      inlineData: {
+        data: imageData,
+        mimeType: mimeType,
+      },
+    };
+    const textPart = { text: 'Describe this image and write a social media post about it. Provide a title, content, and a new image prompt to recreate a similar, high-quality image.' };
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [imagePart, textPart] },
+      config: {
+        systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+        responseMimeType: "application/json",
+        responseSchema: articleSchema,
+      }
+    });
+
+    const jsonText = response.text?.trim();
+    return { article: JSON.parse(jsonText!) };
+  } catch (error: any) {
+    logger.error('Error generating article from image:', error);
+    throw new HttpsError('internal', error.message || 'Failed to generate article from image');
+  }
+});
+
+/**
+ * Generate article from a website URL
+ */
+export const generateArticleFromWebsite = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  const { websiteUrl, systemPrompt } = request.data;
+  
+  if (!websiteUrl) {
+    throw new HttpsError('invalid-argument', 'Missing website URL');
+  }
+
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+  
+  const articleSchema = {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING },
+      content: { type: Type.STRING },
+      imagePrompt: { type: Type.STRING },
+    },
+    required: ['title', 'content', 'imagePrompt'],
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: `Analyze the content of the website at this URL: ${websiteUrl}. Based on its content, create an engaging social media post. Create a new title, content, and a creative image prompt.`,
+      config: {
+        systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+        responseMimeType: "application/json",
+        responseSchema: articleSchema,
+      }
+    });
+
+    const jsonText = response.text?.trim();
+    return { article: JSON.parse(jsonText!) };
+  } catch (error: any) {
+    logger.error('Error generating article from website:', error);
+    throw new HttpsError('internal', error.message || 'Failed to generate article from website');
+  }
+});
+
+/**
+ * Regenerate article text (title and content)
+ */
+export const regenerateArticleText = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  const { article, systemPrompt } = request.data;
+  
+  if (!article) {
+    throw new HttpsError('invalid-argument', 'Missing article data');
+  }
+
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+
+  try {
+    const prompt = `Regenerate the title and content for the following social media post.
+    Original Title: ${article.title}
+    Original Content: ${article.content}
+    Topic (optional): ${article.topic || 'not specified'}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: prompt,
+      config: {
+        systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            content: { type: Type.STRING },
+          },
+          required: ['title', 'content'],
+        },
+      },
+    });
+    
+    const jsonText = response.text?.trim();
+    return { text: JSON.parse(jsonText!) };
+  } catch (error: any) {
+    logger.error('Error regenerating article text:', error);
+    throw new HttpsError('internal', error.message || 'Failed to regenerate article text');
+  }
+});
+
+/**
+ * Generate image from a prompt
+ */
+export const generateImage = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  const { prompt } = request.data;
+  
+  if (!prompt) {
+    throw new HttpsError('invalid-argument', 'Missing image prompt');
+  }
+
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+
+  try {
+    const response = await ai.models.generateImages({
+      model: 'imagen-4.0-generate-001',
+      prompt: prompt,
+      config: {
+        numberOfImages: 1,
+        outputMimeType: 'image/jpeg',
+        aspectRatio: '1:1',
+      },
+    });
+
+    const base64ImageBytes: string = response.generatedImages![0].image!.imageBytes!;
+    return { imageUrl: `data:image/jpeg;base64,${base64ImageBytes}` };
+  } catch (error: any) {
+    logger.error('Error generating image:', error);
+    throw new HttpsError('internal', error.message || 'Failed to generate image');
+  }
+});
+
+/**
+ * Regenerate image prompt for an article
+ */
+export const regenerateImagePrompt = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  const { article, systemPrompt } = request.data;
+  
+  if (!article) {
+    throw new HttpsError('invalid-argument', 'Missing article data');
+  }
+
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+
+  try {
+    const prompt = `Regenerate the image prompt for the following social media post.
+    Title: ${article.title}
+    Content: ${article.content}
+    Original Image Prompt: ${article.imagePrompt || 'not specified'}
+    Topic (optional): ${article.topic || 'not specified'}
+    
+    Create a descriptive and detailed image prompt that captures the essence of this post.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: prompt,
+      config: {
+        systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            imagePrompt: { type: Type.STRING },
+          },
+          required: ['imagePrompt'],
+        },
+      },
+    });
+    
+    const jsonText = response.text?.trim();
+    const result = JSON.parse(jsonText!);
+    return { imagePrompt: result.imagePrompt };
+  } catch (error: any) {
+    logger.error('Error regenerating image prompt:', error);
+    throw new HttpsError('internal', error.message || 'Failed to regenerate image prompt');
+  }
+});
 
 // ============================================================================
 // CLOUD FUNCTION 1: SCHEDULED POST CHECKER (v2)

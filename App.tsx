@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { auth, db } from './firebase';
-// FIX: Use firebase v8 compat imports and syntax.
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import {
   Article,
   GeneratedArticleText,
@@ -60,10 +59,11 @@ function App() {
   const { scheduledArticles, scheduleArticle, unscheduleArticle } = useScheduler(user);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
-        if (userDoc.exists) {
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
           const userData = userDoc.data() as User;
           const fullUser = { ...userData, uid: firebaseUser.uid, email: firebaseUser.email };
           setUser(fullUser);
@@ -71,7 +71,7 @@ function App() {
           setWebhookUrl(userData.webhookUrl || '');
         } else {
           const newUser: User = { uid: firebaseUser.uid, email: firebaseUser.email! };
-          await db.collection('users').doc(firebaseUser.uid).set(newUser, { merge: true });
+          await setDoc(userDocRef, newUser, { merge: true });
           setUser(newUser);
         }
       } else {
@@ -89,12 +89,14 @@ function App() {
       return;
     }
 
-    const jobsCollection = db.collection('generation_jobs');
-    const q = jobsCollection
-        .where('userId', '==', user.uid)
-        .where('status', 'in', ['pending', 'processing']);
+    const jobsCollection = collection(db, 'generation_jobs');
+    const q = query(
+        jobsCollection,
+        where('userId', '==', user.uid),
+        where('status', 'in', ['pending', 'processing'])
+    );
 
-    const unsubscribe = q.onSnapshot(snapshot => {
+    const unsubscribe = onSnapshot(q, snapshot => {
         const jobs: GenerationJob[] = [];
         snapshot.forEach(doc => {
             jobs.push({ docId: doc.id, ...doc.data() } as GenerationJob);
@@ -124,12 +126,14 @@ function App() {
 
     console.log('[Articles Listener] Starting listener for jobId:', completedJobId);
     
-    const articlesCollection = db.collection('generated_articles');
-    const q = articlesCollection
-        .where('userId', '==', user.uid)
-        .where('jobId', '==', completedJobId);
+    const articlesCollection = collection(db, 'generated_articles');
+    const q = query(
+        articlesCollection,
+        where('userId', '==', user.uid),
+        where('jobId', '==', completedJobId)
+    );
 
-    const unsubscribe = q.onSnapshot(snapshot => {
+    const unsubscribe = onSnapshot(q, snapshot => {
         console.log('[Articles Listener] Snapshot received, size:', snapshot.size);
         const batchArticles: Article[] = [];
         snapshot.forEach(doc => {
@@ -175,7 +179,8 @@ function App() {
             return;
         }
         try {
-            const jobDoc = await db.collection('generation_jobs').add({
+            const jobsCollection = collection(db, 'generation_jobs');
+            const jobDoc = await addDoc(jobsCollection, {
                 userId: user.uid,
                 topic: data.topic,
                 count: count,
@@ -183,8 +188,7 @@ function App() {
                 systemPrompt: systemPrompt,
                 status: 'pending',
                 progress: 0,
-                // FIX: Use server timestamp to avoid client/server time issues.
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdAt: serverTimestamp(),
             });
             setCurrentBatchJobId(jobDoc.id);
             // No alert needed, the progress view will appear automatically.
@@ -280,7 +284,8 @@ const handleRegenerateImage = async (article: Article, customPrompt?: string): P
       // Also delete from generated_articles collection if it exists there
       if (user && completedJobId) {
           try {
-              await db.collection('generated_articles').doc(id).delete();
+              const articleDoc = doc(db, 'generated_articles', id);
+              await deleteDoc(articleDoc);
           } catch (error) {
               console.error("Error deleting generated article:", error);
           }
@@ -299,7 +304,8 @@ const handleRegenerateImage = async (article: Article, customPrompt?: string): P
           // Delete from generated_articles collection
           if (user && completedJobId) {
               try {
-                  await db.collection('generated_articles').doc(article.id).delete();
+                  const articleDoc = doc(db, 'generated_articles', article.id);
+                  await deleteDoc(articleDoc);
               } catch (error) {
                   console.error("Error deleting generated article:", error);
               }
@@ -337,27 +343,30 @@ const handleRegenerateImage = async (article: Article, customPrompt?: string): P
   };
 
   const handleLogout = () => {
-    auth.signOut();
+    signOut(auth);
   };
 
   const handleSaveSystemPrompt = async (newPrompt: string) => {
     if (!user) return;
     setSystemPrompt(newPrompt);
-    await db.collection('users').doc(user.uid).update({ systemPrompt: newPrompt });
+    const userDoc = doc(db, 'users', user.uid);
+    await updateDoc(userDoc, { systemPrompt: newPrompt });
     setIsSystemPromptModalOpen(false);
   };
   
   const handleSaveWebhook = async (newWebhook: string) => {
     if (!user) return;
     setWebhookUrl(newWebhook);
-    await db.collection('users').doc(user.uid).update({ webhookUrl: newWebhook });
+    const userDoc = doc(db, 'users', user.uid);
+    await updateDoc(userDoc, { webhookUrl: newWebhook });
     setIsWebhookModalOpen(false);
   };
 
   const handleCancelJob = async (jobId: string) => {
     if (!user) return;
     try {
-        await db.collection('generation_jobs').doc(jobId).update({
+        const jobDoc = doc(db, 'generation_jobs', jobId);
+        await updateDoc(jobDoc, {
             status: 'cancelled',
         });
     } catch (error) {

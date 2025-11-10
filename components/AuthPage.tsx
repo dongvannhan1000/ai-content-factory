@@ -1,6 +1,7 @@
-// FIX: Implemented the AuthPage component to provide a valid module export.
 import React, { useState } from 'react';
 import { auth, db } from '../firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 
 export const AuthPage: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgotPassword'>('login');
@@ -18,23 +19,26 @@ export const AuthPage: React.FC = () => {
 
     try {
       if (authMode === 'login') {
-        await auth.signInWithEmailAndPassword(email, password);
+        await signInWithEmailAndPassword(auth, email, password);
       } else if (authMode === 'signup') {
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         // Send verification email
-        await userCredential.user?.sendEmailVerification();
-        // Save user profile to Firestore
-        await db.collection('users').doc(userCredential.user?.uid).set({
-            uid: userCredential.user?.uid,
+        if (userCredential.user) {
+          await sendEmailVerification(userCredential.user);
+          // Save user profile to Firestore
+          const userDoc = doc(db, 'users', userCredential.user.uid);
+          await setDoc(userDoc, {
+            uid: userCredential.user.uid,
             name,
             phone,
             email,
             createdAt: new Date(),
-        });
+          });
+        }
         setMessage("Account created! A verification email has been sent to your inbox.");
-        setAuthMode('login'); // Switch to login view after successful signup
+        setAuthMode('login');
       } else if (authMode === 'forgotPassword') {
-        await auth.sendPasswordResetEmail(email);
+        await sendPasswordResetEmail(auth, email);
         setMessage("Password reset email sent! Please check your inbox.");
         setAuthMode('login');
       }
