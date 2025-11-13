@@ -13,7 +13,7 @@ import {
   GenerationJob,
 } from './types';
 import {
-  generateArticleFromImage,
+  generateArticlesFromImages,
   generateArticleFromWebsite,
   generateArticlesFromTopic,
   generateImage,
@@ -217,14 +217,38 @@ function App() {
                 setLoadingProgress(prev => prev + 1);
             }
             setArticles(newArticles);
-        } else {
-            setLoadingTotal(1);
-            let generatedText: GeneratedArticleTextFromImage;
-            if (mode === 'image') {
-                generatedText = await generateArticleFromImage(data.image, systemPrompt);
-            } else { // website
-                generatedText = await generateArticleFromWebsite(data.websiteUrl, systemPrompt);
+        } else if (mode === 'image') {
+            setLoadingTotal(data.images.length);
+            
+            // First, convert uploaded images to data URLs for display
+            const uploadedImageUrls = await Promise.all(
+                data.images.map((image: File) => 
+                    new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(image);
+                    })
+                )
+            );
+            
+            // Generate articles from images (this uploads to Storage and calls Cloud Function)
+            const generatedTexts = await generateArticlesFromImages(data.images, systemPrompt);
+            const newArticles: Article[] = [];
+            
+            for (let i = 0; i < generatedTexts.length; i++) {
+                const text = generatedTexts[i];
+                
+                newArticles.push({
+                    id: uuidv4(),
+                    ...text,
+                    imageUrl: uploadedImageUrls[i], // Use the uploaded image data URL for display
+                });
+                setLoadingProgress(prev => prev + 1);
             }
+            setArticles(newArticles);
+        } else { // website
+            setLoadingTotal(1);
+            const generatedText = await generateArticleFromWebsite(data.websiteUrl, systemPrompt);
             const imageUrl = await generateImage(generatedText.imagePrompt);
             setArticles([{
                 id: uuidv4(),
@@ -246,38 +270,6 @@ function App() {
     }
   };
 
-  const handleRegenerateText = async (article: Article, customPrompt?: string): Promise<GeneratedArticleText> => {
-    // Use custom prompt if provided, otherwise fall back to system prompt
-    const promptToUse = customPrompt || systemPrompt;
-    
-    // This function is now responsible for the API call AND state update.
-    // The try/catch will be handled by the calling component (ArticleCard).
-    const newText = await regenerateArticleText(article, promptToUse);
-    setArticles(articles.map(a => a.id === article.id ? { ...a, ...newText } : a));
-    return newText;
-};
-
-const handleRegenerateImage = async (article: Article, customPrompt?: string): Promise<string> => {
-    // Use custom prompt if provided, otherwise fall back to system prompt
-    const promptToUse = customPrompt || systemPrompt;
-    
-    // This function is now responsible for the API call AND state update.
-    // The try/catch will be handled by the calling component (ArticleCard).
-    
-    // For image generation, we need to regenerate the image prompt first with the custom prompt
-    // then generate the image from that new prompt
-    const newImagePrompt = await regenerateImagePrompt(article, promptToUse);
-    console.log('newImagePrompt', newImagePrompt)
-    const newImageUrl = await generateImage(newImagePrompt);
-    
-    setArticles(articles.map(a => a.id === article.id ? { 
-        ...a, 
-        imageUrl: newImageUrl,
-        imagePrompt: newImagePrompt 
-    } : a));
-    
-    return newImageUrl;
-};
 
   const handleDelete = async (id: string) => {
       setArticles(articles.filter(a => a.id !== id));

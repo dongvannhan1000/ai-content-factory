@@ -12,19 +12,29 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, isLoad
   const [topic, setTopic] = useState('');
   const [language, setLanguage] = useState('English');
   const [articleCount, setArticleCount] = useState(5);
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [websiteUrl, setWebsiteUrl] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      setImageFiles(files);
+      
+      const previews: string[] = [];
+      let loadedCount = 0;
+      
+      files.forEach((file) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          previews.push(reader.result as string);
+          loadedCount++;
+          if (loadedCount === files.length) {
+            setImagePreviews(previews);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -38,8 +48,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, isLoad
         onGenerate(mode, { topic, language }, articleCount);
         break;
       case 'image':
-        if (!imageFile) return alert('Please select an image.');
-        onGenerate(mode, { image: imageFile }, 1);
+        if (imageFiles.length === 0) return alert('Please select at least one image.');
+        onGenerate(mode, { images: imageFiles }, imageFiles.length);
         break;
       case 'website':
         if (!websiteUrl) return alert('Please enter a website URL.');
@@ -93,15 +103,22 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, isLoad
       case 'image':
         return (
             <div>
-                <label htmlFor="imageUpload" className="block text-slate-300 font-semibold mb-2">Upload Image</label>
+                <label htmlFor="imageUpload" className="block text-slate-300 font-semibold mb-2">Upload Images</label>
                 <input
                     type="file"
                     id="imageUpload"
                     accept="image/*"
+                    multiple
                     onChange={handleImageChange}
                     className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
                 />
-                {imagePreview && <img src={imagePreview} alt="Preview" className="mt-4 rounded-lg max-h-48" />}
+                {imagePreviews.length > 0 && (
+                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {imagePreviews.map((preview, index) => (
+                      <img key={index} src={preview} alt={`Preview ${index + 1}`} className="rounded-lg max-h-32 w-full object-cover" />
+                    ))}
+                  </div>
+                )}
             </div>
         );
       case 'website':

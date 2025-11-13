@@ -1,7 +1,7 @@
 "use strict";
 // File: functions/src/index.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processBatchGenerationJob = exports.checkScheduledPosts = exports.regenerateImagePrompt = exports.generateImage = exports.regenerateArticleText = exports.generateArticleFromWebsite = exports.generateArticleFromImage = exports.generateArticlesFromTopic = void 0;
+exports.processBatchGenerationJob = exports.checkScheduledPosts = exports.regenerateImagePrompt = exports.generateImage = exports.regenerateArticleText = exports.generateArticleFromWebsite = exports.generateArticlesFromImages = exports.generateArticlesFromTopic = void 0;
 // Sử dụng các import của Firebase Functions v2 hiện đại.
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const firestore_1 = require("firebase-functions/v2/firestore");
@@ -68,15 +68,15 @@ exports.generateArticlesFromTopic = (0, https_1.onCall)(async (request) => {
     }
 });
 /**
- * Generate article from an image
+ * Generate articles from multiple images (one article per image)
  */
-exports.generateArticleFromImage = (0, https_1.onCall)(async (request) => {
+exports.generateArticlesFromImages = (0, https_1.onCall)(async (request) => {
     if (!request.auth) {
         throw new https_1.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    const { imageData, mimeType, systemPrompt } = request.data;
-    if (!imageData || !mimeType) {
-        throw new https_1.HttpsError('invalid-argument', 'Missing image data or mime type');
+    const { imageUrls, systemPrompt } = request.data;
+    if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
+        throw new https_1.HttpsError('invalid-argument', 'Missing or invalid image URLs');
     }
     const ai = new genai_1.GoogleGenAI({ apiKey: geminiApiKey.value() });
     const articleSchema = {
@@ -89,28 +89,40 @@ exports.generateArticleFromImage = (0, https_1.onCall)(async (request) => {
         required: ['title', 'content', 'imagePrompt'],
     };
     try {
-        const imagePart = {
-            inlineData: {
-                data: imageData,
-                mimeType: mimeType,
-            },
-        };
-        const textPart = { text: 'Describe this image and write a social media post about it. Provide a title, content, and a new image prompt to recreate a similar, high-quality image.' };
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [imagePart, textPart] },
-            config: {
-                systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
-                responseMimeType: "application/json",
-                responseSchema: articleSchema,
+        const articles = [];
+        for (const imageUrl of imageUrls) {
+            // Fetch image from URL
+            const imageResponse = await fetch(imageUrl);
+            if (!imageResponse.ok) {
+                throw new Error(`Failed to fetch image from URL: ${imageUrl}`);
             }
-        });
-        const jsonText = response.text?.trim();
-        return { article: JSON.parse(jsonText) };
+            const imageBuffer = await imageResponse.arrayBuffer();
+            const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+            const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+            const imagePart = {
+                inlineData: {
+                    data: imageBase64,
+                    mimeType: mimeType,
+                },
+            };
+            const textPart = { text: 'Describe this image and write a social media post about it. Provide a title, content, and a new image prompt to recreate a similar, high-quality image.' };
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: { parts: [imagePart, textPart] },
+                config: {
+                    systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+                    responseMimeType: "application/json",
+                    responseSchema: articleSchema,
+                }
+            });
+            const jsonText = response.text?.trim();
+            articles.push(JSON.parse(jsonText));
+        }
+        return { articles };
     }
     catch (error) {
-        logger.error('Error generating article from image:', error);
-        throw new https_1.HttpsError('internal', error.message || 'Failed to generate article from image');
+        logger.error('Error generating articles from images:', error);
+        throw new https_1.HttpsError('internal', error.message || 'Failed to generate articles from images');
     }
 });
 /**
@@ -207,7 +219,7 @@ exports.generateImage = (0, https_1.onCall)(async (request) => {
     const ai = new genai_1.GoogleGenAI({ apiKey: geminiApiKey.value() });
     try {
         const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
+            model: 'imagen-4.0-fast-generate-001',
             prompt: prompt,
             config: {
                 numberOfImages: 1,

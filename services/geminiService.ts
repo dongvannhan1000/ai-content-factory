@@ -1,5 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { app, storage } from '../firebase';
+import { auth } from '../firebase';
 import { Article, GeneratedArticleText, GeneratedArticleTextFromImage } from '../types';
 
 const functions = getFunctions(app);
@@ -14,17 +16,33 @@ export const generateArticlesFromTopic = async (topic: string, count: number, la
 };
 
 /**
- * Generates a single article from a provided image.
+ * Generates articles from provided images (one article per image).
  */
-export const generateArticleFromImage = async (image: File, systemInstruction: string): Promise<GeneratedArticleTextFromImage> => {
-  const imageData = await fileToBase64(image);
-  const generateFn = httpsCallable(functions, 'generateArticleFromImage');
+export const generateArticlesFromImages = async (images: File[], systemInstruction: string): Promise<GeneratedArticleTextFromImage[]> => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('User must be authenticated to upload images');
+  }
+
+  // Upload images to Firebase Storage and get URLs
+  const imageUrls = await Promise.all(
+    images.map(async (image, index) => {
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${index}_${image.name}`;
+      const storageRef = ref(storage, `user-images/${user.uid}/${fileName}`);
+      
+      await uploadBytes(storageRef, image);
+      const url = await getDownloadURL(storageRef);
+      return url;
+    })
+  );
+  
+  const generateFn = httpsCallable(functions, 'generateArticlesFromImages');
   const result = await generateFn({ 
-    imageData, 
-    mimeType: image.type,
+    imageUrls,
     systemPrompt: systemInstruction 
   });
-  return (result.data as any).article;
+  return (result.data as any).articles;
 };
 
 /**
@@ -60,15 +78,3 @@ export const regenerateImagePrompt = async (article: Article, systemInstruction:
   return (result.data as any).imagePrompt;
 };
 
-// Helper function to convert a File object to a base64 string
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(',')[1]);
-    };
-    reader.onerror = (error) => reject(error);
-  });
-};

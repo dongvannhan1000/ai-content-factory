@@ -105,17 +105,17 @@ export const generateArticlesFromTopic = onCall(async (request) => {
 });
 
 /**
- * Generate article from an image
+ * Generate articles from multiple images (one article per image)
  */
-export const generateArticleFromImage = onCall(async (request) => {
+export const generateArticlesFromImages = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
   
-  const { imageData, mimeType, systemPrompt } = request.data;
+  const { imageUrls, systemPrompt } = request.data;
   
-  if (!imageData || !mimeType) {
-    throw new HttpsError('invalid-argument', 'Missing image data or mime type');
+  if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
+    throw new HttpsError('invalid-argument', 'Missing or invalid image URLs');
   }
 
   const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
@@ -131,29 +131,45 @@ export const generateArticleFromImage = onCall(async (request) => {
   };
 
   try {
-    const imagePart = {
-      inlineData: {
-        data: imageData,
-        mimeType: mimeType,
-      },
-    };
-    const textPart = { text: 'Describe this image and write a social media post about it. Provide a title, content, and a new image prompt to recreate a similar, high-quality image.' };
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts: [imagePart, textPart] },
-      config: {
-        systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
-        responseMimeType: "application/json",
-        responseSchema: articleSchema,
+    const articles = [];
+    
+    for (const imageUrl of imageUrls) {
+      // Fetch image from URL
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to fetch image from URL: ${imageUrl}`);
       }
-    });
+      
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+      const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+      
+      const imagePart = {
+        inlineData: {
+          data: imageBase64,
+          mimeType: mimeType,
+        },
+      };
+      const textPart = { text: 'Describe this image and write a social media post about it. Provide a title, content, and a new image prompt to recreate a similar, high-quality image.' };
 
-    const jsonText = response.text?.trim();
-    return { article: JSON.parse(jsonText!) };
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [imagePart, textPart] },
+        config: {
+          systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+          responseMimeType: "application/json",
+          responseSchema: articleSchema,
+        }
+      });
+
+      const jsonText = response.text?.trim();
+      articles.push(JSON.parse(jsonText!));
+    }
+
+    return { articles };
   } catch (error: any) {
-    logger.error('Error generating article from image:', error);
-    throw new HttpsError('internal', error.message || 'Failed to generate article from image');
+    logger.error('Error generating articles from images:', error);
+    throw new HttpsError('internal', error.message || 'Failed to generate articles from images');
   }
 });
 
@@ -267,7 +283,7 @@ export const generateImage = onCall(async (request) => {
 
   try {
     const response = await ai.models.generateImages({
-      model: 'imagen-4.0-generate-001',
+      model: 'imagen-4.0-fast-generate-001',
       prompt: prompt,
       config: {
         numberOfImages: 1,

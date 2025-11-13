@@ -18,11 +18,12 @@
 - Uses modern Firebase SDK v9+ (modular imports)
 - Calls backend functions via `httpsCallable`
 - No direct access to Gemini API
+- **Firebase Storage**: Uploads images before processing to avoid payload size limits
 
 ### Backend (Firebase Functions)
 - All Gemini API calls happen in Cloud Functions:
   - `generateArticlesFromTopic` - Single/batch text generation
-  - `generateArticleFromImage` - Image-to-text generation
+  - `generateArticlesFromImages` - Image-to-text generation (fetches from Storage URLs)
   - `generateArticleFromWebsite` - URL-to-text generation  
   - `regenerateArticleText` - Text regeneration
   - `generateImage` - Image generation from prompt
@@ -31,6 +32,13 @@
   - `checkScheduledPosts` - Scheduled post checker (runs every 5 minutes)
 
 - **Authentication**: All callable functions require user authentication via Firebase Auth
+
+### Image Processing Flow
+1. Frontend uploads images to Firebase Storage (`user-images/{userId}/`)
+2. Gets public download URLs from Storage
+3. Sends URLs (not base64) to Cloud Function
+4. Cloud Function fetches images from URLs and processes with Gemini
+5. Frontend displays uploaded images using data URLs
 
 ## Deployment
 
@@ -48,9 +56,14 @@ firebase deploy --only hosting
 
 # Backend
 firebase deploy --only functions
+
+# Storage Rules
+firebase deploy --only storage
 ```
 
 ## Important Notes
 - Never commit `.env` files with secrets
 - The Gemini API key is defined using `defineString("GEMINI_API_KEY")` in functions
 - Frontend bundle is safe to inspect - no secrets exposed
+- Images are uploaded to Firebase Storage to avoid 500 errors with large payloads
+- Storage rules allow public read but restrict writes to authenticated users
