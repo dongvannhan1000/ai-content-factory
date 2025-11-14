@@ -5,10 +5,11 @@ import { GenerationMode } from '../types';
 interface GeneratorFormProps {
   onGenerate: (mode: GenerationMode, data: any, count: number) => void;
   isLoading: boolean;
+  mode: GenerationMode;
+  setMode: (mode: GenerationMode) => void;
 }
 
-export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, isLoading }) => {
-  const [mode, setMode] = useState<GenerationMode>('topic');
+export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, isLoading, mode, setMode }) => {
   const [topic, setTopic] = useState('');
   const [language, setLanguage] = useState('English');
   const [articleCount, setArticleCount] = useState(5);

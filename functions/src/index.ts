@@ -112,7 +112,7 @@ export const generateArticlesFromImages = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
   
-  const { imageUrls, systemPrompt } = request.data;
+  const { imageUrls, systemPrompt, language } = request.data;
   
   if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
     throw new HttpsError('invalid-argument', 'Missing or invalid image URLs');
@@ -150,13 +150,13 @@ export const generateArticlesFromImages = onCall(async (request) => {
           mimeType: mimeType,
         },
       };
-      const textPart = { text: 'Describe this image and write a social media post about it. Provide a title, content, and a new image prompt to recreate a similar, high-quality image.' };
+      const textPart = { text: `Describe this image and write a social media post about it in ${language}. Provide a title, content, and a new image prompt to recreate a similar, high-quality image.` };
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: { parts: [imagePart, textPart] },
         config: {
-          systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
+          systemInstruction: `${systemPrompt}. Write in ${language}.` || 'You are an expert social media manager specializing in viral content.',
           responseMimeType: "application/json",
           responseSchema: articleSchema,
         }

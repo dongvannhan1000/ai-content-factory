@@ -18,7 +18,7 @@ export const generateArticlesFromTopic = async (topic: string, count: number, la
 /**
  * Generates articles from provided images (one article per image).
  */
-export const generateArticlesFromImages = async (images: File[], systemInstruction: string): Promise<GeneratedArticleTextFromImage[]> => {
+export const generateArticlesFromImages = async (images: File[], language: string, systemInstruction: string): Promise<GeneratedArticleTextFromImage[]> => {
   const user = auth.currentUser;
   if (!user) {
     throw new Error('User must be authenticated to upload images');
@@ -40,6 +40,7 @@ export const generateArticlesFromImages = async (images: File[], systemInstructi
   const generateFn = httpsCallable(functions, 'generateArticlesFromImages');
   const result = await generateFn({ 
     imageUrls,
+    language,
     systemPrompt: systemInstruction 
   });
   return (result.data as any).articles;
@@ -48,9 +49,9 @@ export const generateArticlesFromImages = async (images: File[], systemInstructi
 /**
  * Generates a single article by analyzing a website URL.
  */
-export const generateArticleFromWebsite = async (websiteUrl: string, systemInstruction: string): Promise<GeneratedArticleTextFromImage> => {
+export const generateArticleFromWebsite = async (websiteUrl: string, language: string, systemInstruction: string): Promise<GeneratedArticleTextFromImage> => {
   const generateFn = httpsCallable(functions, 'generateArticleFromWebsite');
-  const result = await generateFn({ websiteUrl, systemPrompt: systemInstruction });
+  const result = await generateFn({ websiteUrl, language, systemPrompt: systemInstruction });
   return (result.data as any).article;
 };
 

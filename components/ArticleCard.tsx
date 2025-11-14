@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Article } from '../types';
+import { Article, GenerationMode } from '../types';
 import { generateImage, regenerateArticleText, regenerateImagePrompt } from '@/services/geminiService';
 
 interface ArticleCardProps {
@@ -8,6 +8,7 @@ interface ArticleCardProps {
   onDelete: (id: string) => void;
   onPostNow: (article: Article) => Promise<void>;
   defaultSystemPrompt: string;
+  mode: GenerationMode;
 }
 
 export const ArticleCard: React.FC<ArticleCardProps> = ({ 
@@ -15,7 +16,8 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   onSchedule, 
   onDelete, 
   onPostNow,
-  defaultSystemPrompt 
+  defaultSystemPrompt,
+  mode 
 }) => {
   const [isRegeneratingText, setIsRegeneratingText] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
@@ -115,7 +117,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
             </button>
             <button
               onClick={handleRegenerateImageClick}
-              disabled={isRegeneratingImage || !currentArticle.imagePrompt}
+              disabled={isRegeneratingImage || !currentArticle.imagePrompt || mode === 'image'}
               className="flex-auto bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-3 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isRegeneratingImage ? '...' : 'Image'}

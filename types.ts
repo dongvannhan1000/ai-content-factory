@@ -3,8 +3,7 @@ export interface User {
   email: string | null;
   name?: string;
   phone?: string;
-  systemPrompt?: string;
-  webhookUrl?: string;
+  settings: UserSettings;
 }
 
 export interface Article {
@@ -44,4 +43,19 @@ export interface GenerationJob {
   createdAt: any; // Firestore Timestamp
   progress?: number;
   error?: string;
+}
+
+export interface UserSettings {
+  ai: {
+    systemPrompt: string;
+    contentLanguage: string;
+  };
+  vision: {
+    visionSystemPrompt: string;
+    imagePromptSuffix: string;
+    imageAspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+  };
+  integration: {
+    webhookUrl: string;
+  };
 }

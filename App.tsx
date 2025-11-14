@@ -5,20 +5,17 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import {
   Article,
-  GeneratedArticleText,
-  GeneratedArticleTextFromImage,
   GenerationMode,
   ScheduledArticle,
   User,
   GenerationJob,
+  UserSettings,
 } from './types';
 import {
   generateArticlesFromImages,
   generateArticleFromWebsite,
   generateArticlesFromTopic,
   generateImage,
-  regenerateArticleText,
-  regenerateImagePrompt,
 } from './services/geminiService';
 import { useScheduler } from './hooks/useScheduler';
 
@@ -29,9 +26,24 @@ import { Loader } from './components/Loader';
 import { ArticleCard } from './components/ArticleCard';
 import { ScheduleView } from './components/ScheduleView';
 import { ScheduleModal } from './components/ScheduleModal';
-import { SystemPromptModal } from './components/SystemPromptModal';
-import { WebhookModal } from './components/WebhookModal';
 import { BatchProgressView } from './components/BatchProgressView';
+import { SettingsModal } from './components/SettingsModal';
+import { flatten } from 'flat';
+
+const DEFAULT_SETTINGS: UserSettings = {
+  ai: {
+    systemPrompt: 'You are an expert social media manager specializing in viral content.',
+    contentLanguage: 'English',
+  },
+  vision: {
+    visionSystemPrompt: '',
+    imagePromptSuffix: '4k, detailed',
+    imageAspectRatio: '1:1',
+  },
+  integration: {
+    webhookUrl: '',
+  },
+};
 
 
 function App() {
@@ -47,15 +59,14 @@ function App() {
   const [completedJobId, setCompletedJobId] = useState<string | null>(null);
   const [currentBatchJobId, setCurrentBatchJobId] = useState<string | null>(null);
   const isBatchJobRunningRef = useRef(false);
+  const [mode, setMode] = useState<GenerationMode>('topic');
 
   const [currentView, setCurrentView] = useState<'generator' | 'schedule'>('generator');
   const [scheduleModalArticle, setScheduleModalArticle] = useState<Article | ScheduledArticle | null>(null);
-  const [isSystemPromptModalOpen, setIsSystemPromptModalOpen] = useState(false);
-  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
+  const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
 
-  const [systemPrompt, setSystemPrompt] = useState('You are an expert social media manager specializing in viral content.');
-  const [webhookUrl, setWebhookUrl] = useState('');
-
+  // QUAN TRỌNG: Quản lý tất cả settings bằng một state object
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const { scheduledArticles, scheduleArticle, unscheduleArticle } = useScheduler(user);
 
   useEffect(() => {
@@ -63,22 +74,63 @@ function App() {
       if (firebaseUser) {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const userDoc = await getDoc(userDocRef);
+
         if (userDoc.exists()) {
+          // USER CŨ TỒN TẠI
           const userData = userDoc.data() as User;
           const fullUser = { ...userData, uid: firebaseUser.uid, email: firebaseUser.email };
           setUser(fullUser);
-          setSystemPrompt(userData.systemPrompt || 'You are an expert social media manager specializing in viral content.');
-          setWebhookUrl(userData.webhookUrl || '');
+
+          // --- LOGIC GOM NHÓM VÀ MERGE AN TOÀN ---
+          
+          // 1. Lấy settings đã lưu (hoặc object rỗng nếu không có)
+          const savedSettings = (userData.settings || {}) as Partial<UserSettings>; // Đây là chìa khóa!
+          
+          // 2. Merge từng nhóm lồng nhau
+          const finalSettings: UserSettings = {
+            ai: {
+              ...DEFAULT_SETTINGS.ai,
+              ...(savedSettings.ai || {}), // Merge parital 'ai' settings
+            },
+            vision: {
+              ...DEFAULT_SETTINGS.vision,
+              ...(savedSettings.vision || {}), // Merge partial 'vision' settings
+            },
+            integration: {
+              ...DEFAULT_SETTINGS.integration,
+              ...(savedSettings.integration || {}), // Merge partial 'integration' settings
+            },
+          };
+
+          setSettings(finalSettings);
+          
+          // Tùy chọn: Nếu settings bị thiếu, hãy cập nhật CSDL
+          // Điều này giúp "vá" dữ liệu cũ
+          if (!userData.settings) {
+            await setDoc(userDocRef, { settings: finalSettings }, { merge: true });
+          }
+
         } else {
-          const newUser: User = { uid: firebaseUser.uid, email: firebaseUser.email! };
+          // USER MỚI
+          // Sử dụng hằng số DEFAULT_SETTINGS để tạo user
+          const newUser: User = { 
+            uid: firebaseUser.uid, 
+            email: firebaseUser.email!, 
+            settings: DEFAULT_SETTINGS // Dùng giá trị mặc định đầy đủ
+          };
           await setDoc(userDocRef, newUser, { merge: true });
+          
           setUser(newUser);
+          setSettings(DEFAULT_SETTINGS); // Đặt state với giá trị mặc định
         }
       } else {
+        // KHÔNG CÓ USER
         setUser(null);
+        setSettings(DEFAULT_SETTINGS); // Reset về mặc định
       }
       setInitializing(false);
     });
+
     return () => unsubscribe();
   }, []);
 
@@ -185,7 +237,7 @@ function App() {
                 topic: data.topic,
                 count: count,
                 language: data.language,
-                systemPrompt: systemPrompt,
+                systemPrompt: settings.ai.systemPrompt,
                 status: 'pending',
                 progress: 0,
                 createdAt: serverTimestamp(),
@@ -204,7 +256,7 @@ function App() {
     try {
         if (mode === 'topic') {
             setLoadingTotal(count);
-            const generatedTexts = await generateArticlesFromTopic(data.topic, count, data.language, systemPrompt);
+            const generatedTexts = await generateArticlesFromTopic(data.topic, count, data.language, settings.ai.systemPrompt);
             const newArticles: Article[] = [];
             for (const text of generatedTexts) {
                 const imageUrl = await generateImage(text.imagePrompt);
@@ -232,7 +284,7 @@ function App() {
             );
             
             // Generate articles from images (this uploads to Storage and calls Cloud Function)
-            const generatedTexts = await generateArticlesFromImages(data.images, systemPrompt);
+            const generatedTexts = await generateArticlesFromImages(data.images, settings.ai.contentLanguage, settings.ai.systemPrompt);
             const newArticles: Article[] = [];
             
             for (let i = 0; i < generatedTexts.length; i++) {
@@ -248,7 +300,7 @@ function App() {
             setArticles(newArticles);
         } else { // website
             setLoadingTotal(1);
-            const generatedText = await generateArticleFromWebsite(data.websiteUrl, systemPrompt);
+            const generatedText = await generateArticleFromWebsite(data.websiteUrl, settings.ai.language, settings.ai.systemPrompt);
             const imageUrl = await generateImage(generatedText.imagePrompt);
             setArticles([{
                 id: uuidv4(),
@@ -307,12 +359,12 @@ function App() {
   };
 
   const handlePostNow = async (article: Article) => {
-    if (!webhookUrl) {
+    if (!settings.webhookUrl) {
       alert("Please set a Webhook URL in the settings first.");
       throw new Error("Webhook URL is not set.");
     }
     try {
-      const response = await fetch(webhookUrl, {
+      const response = await fetch(settings.webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -338,20 +390,33 @@ function App() {
     signOut(auth);
   };
 
-  const handleSaveSystemPrompt = async (newPrompt: string) => {
-    if (!user) return;
-    setSystemPrompt(newPrompt);
-    const userDoc = doc(db, 'users', user.uid);
-    await updateDoc(userDoc, { systemPrompt: newPrompt });
-    setIsSystemPromptModalOpen(false);
-  };
-  
-  const handleSaveWebhook = async (newWebhook: string) => {
-    if (!user) return;
-    setWebhookUrl(newWebhook);
-    const userDoc = doc(db, 'users', user.uid);
-    await updateDoc(userDoc, { webhookUrl: newWebhook });
-    setIsWebhookModalOpen(false);
+  const handleSaveSettings = async (newSettings: UserSettings) => {
+    setSettings(newSettings);
+    if (user) {
+        try {
+            const userDocRef = doc(db, 'users', user.uid);
+            
+            // SỬA LỖI: Bọc 'newSettings' vào trong một object '{ settings: ... }'
+            // Sử dụng "dot notation" để cập nhật chính xác trường lồng nhau
+            // Hoặc đơn giản là setDoc với object cha
+            await setDoc(userDocRef, 
+                { 
+                    settings: newSettings // <--- SỬA LỖI NẰM Ở ĐÂY
+                }, 
+                { merge: true } // 'merge: true' đảm bảo chúng ta không ghi đè các trường khác
+            );
+            
+            console.log('Settings updated successfully!');
+
+        } catch (error) {
+            console.error("Error updating settings:", error);
+            // Bạn nên hiển thị thông báo lỗi cho người dùng ở đây
+        }
+    }
+    setSettingsModalOpen(false);
+    
+    // (Bạn cũng có thể gọi API để lưu vào database ở đây)
+    console.log('Settings saved:', newSettings);
   };
 
   const handleCancelJob = async (jobId: string) => {
@@ -384,18 +449,15 @@ function App() {
         <SideNav
             user={user}
             onLogout={handleLogout}
-            onSetSystemPrompt={() => setIsSystemPromptModalOpen(true)}
-            systemPrompt={systemPrompt}
+            onSetSettings={() => setSettingsModalOpen(true)}
             currentView={currentView}
             onSetView={setCurrentView}
-            onSetWebhook={() => setIsWebhookModalOpen(true)}
-            webhookUrl={webhookUrl}
         />
         <main className="pl-16 sm:pl-64">
             <div className="p-4 sm:p-8">
                 {currentView === 'generator' && (
                     <div className="space-y-8">
-                        <GeneratorForm onGenerate={handleGenerate} isLoading={isLoading || isBatchJobRunning} />
+                        <GeneratorForm onGenerate={handleGenerate} isLoading={isLoading || isBatchJobRunning} mode={mode} setMode={setMode}/>
                         {isLoading && !isBatchJobRunning ? (
                             <Loader progress={loadingProgress} total={loadingTotal} />
                         ) : isBatchJobRunning ? (
@@ -409,6 +471,7 @@ function App() {
                                         onSchedule={handleSchedule}
                                         onDelete={handleDelete}
                                         onPostNow={handlePostNow}
+                                        mode={mode}
                                     />
                                 ))}
                             </section>
@@ -433,19 +496,12 @@ function App() {
             />
         )}
         
-        <SystemPromptModal
-            isOpen={isSystemPromptModalOpen}
-            currentPrompt={systemPrompt}
-            onSave={handleSaveSystemPrompt}
-            onClose={() => setIsSystemPromptModalOpen(false)}
-        />
-
-        <WebhookModal
-            isOpen={isWebhookModalOpen}
-            currentWebhook={webhookUrl}
-            onSave={handleSaveWebhook}
-            onClose={() => setIsWebhookModalOpen(false)}
-        />
+        <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        currentSettings={settings}
+        onSave={handleSaveSettings}
+      />
     </div>
   );
 }
