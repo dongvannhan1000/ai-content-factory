@@ -16,26 +16,55 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, isLoad
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      setImageFiles(files);
-      
-      const previews: string[] = [];
-      let loadedCount = 0;
-      
-      files.forEach((file) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          previews.push(reader.result as string);
-          loadedCount++;
-          if (loadedCount === files.length) {
-            setImagePreviews(previews);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+  const handleRemoveImage = (indexToRemove: number) => {
+    // Cập nhật state bằng cách lọc ra phần tử bị xóa
+    // Rất quan trọng: Phải cập nhật cả file và preview
+    setImageFiles(prevFiles => 
+        prevFiles.filter((_, index) => index !== indexToRemove)
+    );
+    setImagePreviews(prevPreviews => 
+        prevPreviews.filter((_, index) => index !== indexToRemove)
+    );
+};
+
+/**
+ * Xử lý khi người dùng chọn file mới.
+ * Đã được cải tiến để NỐI THÊM file, không GHI ĐÈ.
+ */
+const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) {
+        return; // Không có file nào được chọn
     }
+
+    const newFiles = Array.from(e.target.files);
+
+    // 1. Nối danh sách file mới vào danh sách file cũ
+    setImageFiles(prevFiles => [...prevFiles, ...newFiles]);
+
+    // 2. Tạo hàm đọc file (dưới dạng Promise)
+    const readFileAsDataURL = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    };
+
+    try {
+        // 3. Chờ tất cả file mới được đọc và tạo preview
+        const newPreviews = await Promise.all(newFiles.map(readFileAsDataURL));
+
+        // 4. Nối danh sách preview mới vào danh sách preview cũ
+        setImagePreviews(prevPreviews => [...prevPreviews, ...newPreviews]);
+        
+    } catch (error) {
+        console.error("Lỗi khi đọc file preview:", error);
+        // Bạn có thể hiển thị thông báo lỗi cho người dùng ở đây
+    }
+
+    // 5. Xóa giá trị của input để người dùng có thể chọn lại file giống hệt
+    e.target.value = '';
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -102,25 +131,42 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, isLoad
         );
       case 'image':
         return (
-            <div>
-                <label htmlFor="imageUpload" className="block text-slate-300 font-semibold mb-2">Upload Images</label>
-                <input
-                    type="file"
-                    id="imageUpload"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageChange}
-                    className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
-                />
-                {imagePreviews.length > 0 && (
-                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        <div>
+            <label htmlFor="imageUpload" className="block text-slate-300 font-semibold mb-2">Upload Images</label>
+            <input
+                type="file"
+                id="imageUpload"
+                accept="image/*"
+                multiple
+                onChange={handleImageChange}
+                className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
+            />
+
+            {/* Vùng hiển thị Preview đã được cập nhật */}
+            {imagePreviews.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     {imagePreviews.map((preview, index) => (
-                      <img key={index} src={preview} alt={`Preview ${index + 1}`} className="rounded-lg max-h-32 w-full object-cover" />
+                        <div key={index} className="relative group">
+                            <img
+                                src={preview}
+                                alt={`Preview ${index + 1}`}
+                                className="rounded-lg max-h-32 w-full object-cover"
+                            />
+                            {/* Nút X để xóa ảnh */}
+                            <button
+                                type="button"
+                                onClick={() => handleRemoveImage(index)}
+                                className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold opacity-70 group-hover:opacity-100 transition-opacity"
+                                aria-label={`Remove image ${index + 1}`}
+                            >
+                                X
+                            </button>
+                        </div>
                     ))}
-                  </div>
-                )}
-            </div>
-        );
+                </div>
+            )}
+        </div>
+    );
       case 'website':
         return (
             <div>
