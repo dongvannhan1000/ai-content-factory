@@ -307,7 +307,7 @@ exports.checkScheduledPosts = (0, scheduler_1.onSchedule)("every 5 minutes", asy
                 throw new Error(`User document not found for userId: ${scheduledArticle.userId}`);
             }
             const userData = userDoc.data();
-            const { webhookUrl } = userData;
+            const { webhookUrl } = userData.integration;
             if (!webhookUrl) {
                 logger.warn(`No webhook URL for user ${scheduledArticle.userId}. Deleting schedule ${docId}.`);
                 await doc.ref.delete();

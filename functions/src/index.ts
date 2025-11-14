@@ -37,8 +37,19 @@ interface ScheduledArticle {
     scheduledTime: admin.firestore.Timestamp;
 }
 
-interface UserData {
-    webhookUrl?: string;
+export interface UserSettings {
+  ai: {
+    systemPrompt: string;
+    contentLanguage: string;
+  };
+  vision: {
+    visionSystemPrompt: string;
+    imagePromptSuffix: string;
+    imageAspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+  };
+  integration: {
+    webhookUrl: string;
+  };
 }
 
 interface GenerationJob {
@@ -387,8 +398,8 @@ export const checkScheduledPosts = onSchedule(
           throw new Error(`User document not found for userId: ${scheduledArticle.userId}`);
         }
 
-        const userData = userDoc.data() as UserData;
-        const { webhookUrl } = userData;
+        const userData = userDoc.data() as UserSettings;
+        const { webhookUrl } = userData.integration;
 
         if (!webhookUrl) {
           logger.warn(

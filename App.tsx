@@ -359,12 +359,12 @@ function App() {
   };
 
   const handlePostNow = async (article: Article) => {
-    if (!settings.integrations.webhookUrl) {
+    if (!settings.integration.webhookUrl) {
       alert("Please set a Webhook URL in the settings first.");
       throw new Error("Webhook URL is not set.");
     }
     try {
-      const response = await fetch(settings.integrations.webhookUrl, {
+      const response = await fetch(settings.integration.webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
