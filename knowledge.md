@@ -48,7 +48,7 @@ Before deploying functions:
 firebase functions:secrets:set GEMINI_API_KEY
 ```
 
-### Build & Deploy
+### Deploy to Firebase Hosting (Recommended)
 ```bash
 # Frontend
 npm run build
@@ -60,6 +60,26 @@ firebase deploy --only functions
 # Storage Rules
 firebase deploy --only storage
 ```
+
+### Deploy to Netlify (Alternative)
+
+**Required Environment Variables in Netlify:**
+Add these in Site Settings → Environment Variables:
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+
+Get values from Firebase Console → Project Settings → General → Your apps.
+
+**Backend still deploys to Firebase:**
+```bash
+firebase deploy --only functions
+```
+
+The frontend on Netlify will call Firebase Functions via `httpsCallable`.
 
 ## Important Notes
 - Never commit `.env` files with secrets
