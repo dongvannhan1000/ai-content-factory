@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "sourceMap": true,           // ← Thêm dòng này
+    "inlineSourceMap": false,    // ← Đảm bảo false
+    "inlineSources": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
