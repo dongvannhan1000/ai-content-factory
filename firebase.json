@@ -2,6 +2,8 @@
   "functions": [
     {
       "source": "functions",
+      "runtime": "nodejs20",
+      "secrets": ["GEMINI_API_KEY"],
       "codebase": "default",
       "ignore": [
         "node_modules",
