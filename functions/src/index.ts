@@ -60,6 +60,7 @@ interface GenerationJob {
     count: number;
     language: string;
     systemPrompt: string;
+    imagePromptSuffix?: string;
     status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 }
 
@@ -523,6 +524,11 @@ export const processBatchGenerationJob = onDocumentCreated({
         const articleText = JSON.parse(textResponse.text!.trim());
         logger.info(`[Job ${jobId}] Text generation successful.`);
 
+        // Apply imagePromptSuffix if provided
+        if (jobData.imagePromptSuffix && articleText.imagePrompt) {
+          articleText.imagePrompt = `${articleText.imagePrompt.trim()}, ${jobData.imagePromptSuffix}`;
+        }
+
         // 2. Tạo hình ảnh
         logger.info(`[Job ${jobId}] Calling Imagen for image generation...`);
         const imageResponse = await ai.models.generateImages({
@@ -567,4 +573,4 @@ export const processBatchGenerationJob = onDocumentCreated({
           error: error.message || "An unknown error occurred.",
       });
     }
-});
+});

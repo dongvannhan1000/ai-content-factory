@@ -39,6 +39,7 @@ export interface GenerationJob {
   count: number;
   language: string;
   systemPrompt: string;
+  imagePromptSuffix?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   createdAt: any; // Firestore Timestamp
   progress?: number;
@@ -58,4 +59,4 @@ export interface UserSettings {
   integration: {
     webhookUrl: string;
   };
-}
+}
