@@ -282,7 +282,8 @@ function App() {
     try {
         if (mode === 'topic') {
             setLoadingTotal(count);
-            const generatedTexts = await generateArticlesFromTopic(data.topic, count, data.language, settings.ai.systemPrompt);
+            console.log(count);
+            const generatedTexts = await generateArticlesFromTopic(data.topic, count, data.language, settings.ai.systemPrompt, settings.vision.imagePromptSuffix);
             const newArticles: Article[] = [];
             for (const text of generatedTexts) {
                 const imageUrl = await generateImage(text.imagePrompt);
@@ -498,6 +499,7 @@ function App() {
                                         onDelete={handleDelete}
                                         onPostNow={handlePostNow}
                                         mode={mode}
+                                        settings={settings}
                                     />
                                 ))}
                             </section>

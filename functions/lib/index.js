@@ -31,7 +31,7 @@ exports.generateArticlesFromTopic = (0, https_1.onCall)(async (request) => {
     if (!request.auth) {
         throw new https_1.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    const { topic, count, language, systemPrompt } = request.data;
+    const { topic, count, language, systemPrompt, imagePromptSuffix } = request.data;
     if (!topic || !count || !language) {
         throw new https_1.HttpsError('invalid-argument', 'Missing required parameters');
     }
@@ -41,7 +41,7 @@ exports.generateArticlesFromTopic = (0, https_1.onCall)(async (request) => {
         properties: {
             title: { type: genai_1.Type.STRING, description: 'A catchy and engaging title for the social media post.' },
             content: { type: genai_1.Type.STRING, description: 'The main body of the post, formatted for readability on social platforms.' },
-            imagePrompt: { type: genai_1.Type.STRING, description: 'A detailed, creative prompt for an AI image generator to create a visually appealing image that matches the post.' },
+            imagePrompt: { type: genai_1.Type.STRING, description: `A detailed, creative prompt for an AI image generator to create a visually appealing image that matches the post.` },
         },
         required: ['title', 'content', 'imagePrompt'],
     };
@@ -52,14 +52,20 @@ exports.generateArticlesFromTopic = (0, https_1.onCall)(async (request) => {
             config: {
                 systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
                 responseMimeType: "application/json",
-                responseSchema: {
-                    type: genai_1.Type.ARRAY,
-                    items: articleSchema,
-                },
+                responseSchema: articleSchema
             },
         });
         const jsonText = response.text?.trim();
+        if (!jsonText) {
+            throw new https_1.HttpsError('internal', 'Received empty response from AI');
+        }
         const articles = JSON.parse(jsonText);
+        if (Array.isArray(articles) || typeof articles !== 'object' || articles === null) {
+            throw new https_1.HttpsError('internal', 'AI returned unexpected data structure');
+        }
+        if (imagePromptSuffix && articles.imagePrompt) {
+            articles.imagePrompt = `${articles.imagePrompt.trim()}, ${imagePromptSuffix}`;
+        }
         return { articles };
     }
     catch (error) {
@@ -242,7 +248,7 @@ exports.regenerateImagePrompt = (0, https_1.onCall)(async (request) => {
     if (!request.auth) {
         throw new https_1.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    const { article, systemPrompt } = request.data;
+    const { article, systemPrompt, imagePromptSuffix } = request.data;
     if (!article) {
         throw new https_1.HttpsError('invalid-argument', 'Missing article data');
     }
@@ -253,8 +259,10 @@ exports.regenerateImagePrompt = (0, https_1.onCall)(async (request) => {
     Content: ${article.content}
     Original Image Prompt: ${article.imagePrompt || 'not specified'}
     Topic (optional): ${article.topic || 'not specified'}
+    Image Prompt Suffix: ${imagePromptSuffix}
     
-    Create a descriptive and detailed image prompt that captures the essence of this post.`;
+    Create a descriptive and detailed image prompt that captures the essence of this post.
+    Add the suffix to the end of the image prompt.`;
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
             contents: prompt,

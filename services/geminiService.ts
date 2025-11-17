@@ -9,9 +9,9 @@ const functions = getFunctions(app);
 /**
  * Generates a list of articles based on a topic.
  */
-export const generateArticlesFromTopic = async (topic: string, count: number, language: string, systemInstruction: string): Promise<GeneratedArticleTextFromImage[]> => {
+export const generateArticlesFromTopic = async (topic: string, count: number, language: string, systemInstruction: string, imagePromptSuffix: string): Promise<GeneratedArticleTextFromImage[]> => {
   const generateFn = httpsCallable(functions, 'generateArticlesFromTopic');
-  const result = await generateFn({ topic, count, language, systemPrompt: systemInstruction });
+  const result = await generateFn({ topic, count, language, systemPrompt: systemInstruction, imagePromptSuffix });
   return (result.data as any).articles;
 };
 
@@ -73,9 +73,9 @@ export const generateImage = async (prompt: string): Promise<string> => {
   return (result.data as any).imageUrl;
 };
 
-export const regenerateImagePrompt = async (article: Article, systemInstruction: string): Promise<string> => {
+export const regenerateImagePrompt = async (article: Article, systemInstruction: string, imagePromptSuffix: string): Promise<string> => {
   const regenerateFn = httpsCallable(functions, 'regenerateImagePrompt');
-  const result = await regenerateFn({ article, systemPrompt: systemInstruction });
+  const result = await regenerateFn({ article, systemPrompt: systemInstruction, imagePromptSuffix });
   return (result.data as any).imagePrompt;
 };
 

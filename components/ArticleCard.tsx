@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Article, GenerationMode } from '../types';
+import { Article, GenerationMode, UserSettings } from '../types';
 import { generateImage, regenerateArticleText, regenerateImagePrompt } from '@/services/geminiService';
 
 interface ArticleCardProps {
@@ -9,6 +9,7 @@ interface ArticleCardProps {
   onPostNow: (article: Article) => Promise<void>;
   defaultSystemPrompt: string;
   mode: GenerationMode;
+  settings: UserSettings;
 }
 
 export const ArticleCard: React.FC<ArticleCardProps> = ({ 
@@ -17,7 +18,8 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   onDelete, 
   onPostNow,
   defaultSystemPrompt,
-  mode 
+  mode,
+  settings 
 }) => {
   const [isRegeneratingText, setIsRegeneratingText] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
@@ -70,7 +72,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     setIsRegeneratingImage(true);
     try {
       
-      const newImagePrompt = await regenerateImagePrompt(article, customPrompt);
+      const newImagePrompt = await regenerateImagePrompt(article, customPrompt, settings.vision.imagePromptSuffix);
       const newImageUrl = await generateImage(newImagePrompt);
       setCurrentArticle(prev => ({ ...prev, imageUrl: newImageUrl, imagePrompt: newImagePrompt }));
     } catch (error) {

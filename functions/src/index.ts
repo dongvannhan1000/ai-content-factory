@@ -76,7 +76,7 @@ export const generateArticlesFromTopic = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
   
-  const { topic, count, language, systemPrompt } = request.data;
+  const { topic, count, language, systemPrompt, imagePromptSuffix } = request.data;
   
   if (!topic || !count || !language) {
     throw new HttpsError('invalid-argument', 'Missing required parameters');
@@ -89,7 +89,7 @@ export const generateArticlesFromTopic = onCall(async (request) => {
     properties: {
       title: { type: Type.STRING, description: 'A catchy and engaging title for the social media post.' },
       content: { type: Type.STRING, description: 'The main body of the post, formatted for readability on social platforms.' },
-      imagePrompt: { type: Type.STRING, description: 'A detailed, creative prompt for an AI image generator to create a visually appealing image that matches the post.' },
+      imagePrompt: { type: Type.STRING, description: `A detailed, creative prompt for an AI image generator to create a visually appealing image that matches the post.` },
     },
     required: ['title', 'content', 'imagePrompt'],
   };
@@ -101,15 +101,22 @@ export const generateArticlesFromTopic = onCall(async (request) => {
       config: {
         systemInstruction: systemPrompt || 'You are an expert social media manager specializing in viral content.',
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: articleSchema,
-        },
+        responseSchema: articleSchema
       },
     });
 
     const jsonText = response.text?.trim();
+    if (!jsonText) {
+      throw new HttpsError('internal', 'Received empty response from AI');
+    }
     const articles = JSON.parse(jsonText!);
+
+    if (Array.isArray(articles) || typeof articles !== 'object' || articles === null) {
+       throw new HttpsError('internal', 'AI returned unexpected data structure');
+    }
+    if (imagePromptSuffix && articles.imagePrompt) {
+      articles.imagePrompt = `${articles.imagePrompt.trim()}, ${imagePromptSuffix}`;
+    }
     return { articles };
   } catch (error: any) {
     logger.error('Error generating articles from topic:', error);
@@ -321,7 +328,7 @@ export const regenerateImagePrompt = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
   
-  const { article, systemPrompt } = request.data;
+  const { article, systemPrompt, imagePromptSuffix } = request.data;
   
   if (!article) {
     throw new HttpsError('invalid-argument', 'Missing article data');
@@ -335,8 +342,10 @@ export const regenerateImagePrompt = onCall(async (request) => {
     Content: ${article.content}
     Original Image Prompt: ${article.imagePrompt || 'not specified'}
     Topic (optional): ${article.topic || 'not specified'}
+    Image Prompt Suffix: ${imagePromptSuffix}
     
-    Create a descriptive and detailed image prompt that captures the essence of this post.`;
+    Create a descriptive and detailed image prompt that captures the essence of this post.
+    Add the suffix to the end of the image prompt.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-pro',
@@ -356,6 +365,7 @@ export const regenerateImagePrompt = onCall(async (request) => {
     
     const jsonText = response.text?.trim();
     const result = JSON.parse(jsonText!);
+
     return { imagePrompt: result.imagePrompt };
   } catch (error: any) {
     logger.error('Error regenerating image prompt:', error);
