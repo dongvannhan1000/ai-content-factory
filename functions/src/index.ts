@@ -38,7 +38,8 @@ interface ScheduledArticle {
 }
 
 export interface UserSettings {
-  ai: {
+  settings: {
+    ai: {
     systemPrompt: string;
     contentLanguage: string;
   };
@@ -49,7 +50,8 @@ export interface UserSettings {
   };
   integration: {
     webhookUrl: string;
-  };
+    };
+  }
 }
 
 interface GenerationJob {
@@ -399,7 +401,9 @@ export const checkScheduledPosts = onSchedule(
         }
 
         const userData = userDoc.data() as UserSettings;
-        const { webhookUrl } = userData.integration;
+        logger.info("userData", userData);
+        const { webhookUrl } = userData.settings.integration;
+        logger.info("webhookUrl", webhookUrl);
 
         if (!webhookUrl) {
           logger.warn(

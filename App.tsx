@@ -224,7 +224,7 @@ function App() {
     setCurrentBatchJobId(null);
 
     // Logic for batch generation via Cloud Function
-    if (mode === 'topic' && count > 1) {
+    if (mode === 'topic' && count >= 1) {
         if (!user) {
             alert("You must be logged in to start a batch job.");
             setIsLoading(false);
@@ -237,6 +237,32 @@ function App() {
                 topic: data.topic,
                 count: count,
                 language: data.language,
+                systemPrompt: settings.ai.systemPrompt,
+                status: 'pending',
+                progress: 0,
+                createdAt: serverTimestamp(),
+            });
+            setCurrentBatchJobId(jobDoc.id);
+            // No alert needed, the progress view will appear automatically.
+        } catch (error) {
+            console.error("Could not submit the generation job:", error);
+            alert("Could not submit the generation job. Please check the console and try again.");
+            setIsLoading(false);
+        }
+        return;
+    } else if (mode === 'image' && data.images.length >= 1) {
+        if (!user) {
+            alert("You must be logged in to start a batch job.");
+            setIsLoading(false);
+            return;
+        }
+        try {
+            const jobsCollection = collection(db, 'generation_jobs');
+            const jobDoc = await addDoc(jobsCollection, {
+                userId: user.uid,
+                topic: 'Content from images',
+                count: data.images.length,
+                language: settings.ai.contentLanguage,
                 systemPrompt: settings.ai.systemPrompt,
                 status: 'pending',
                 progress: 0,
