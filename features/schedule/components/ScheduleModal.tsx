@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Article, ScheduledArticle } from '../types';
+import { Article, ScheduledArticle } from '../../../types';
 
 interface ScheduleModalProps {
   article: Article | ScheduledArticle | null;
@@ -17,10 +17,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({ article, onClose, 
       setScheduleDate(d.toISOString().split('T')[0]); // YYYY-MM-DD
       setScheduleTime(d.toTimeString().split(' ')[0].substring(0, 5)); // HH:MM
     } else {
-        const now = new Date();
-        now.setHours(now.getHours() + 1); // Default to 1 hour from now
-        setScheduleDate(now.toISOString().split('T')[0]);
-        setScheduleTime(now.toTimeString().split(' ')[0].substring(0, 5));
+      const now = new Date();
+      now.setHours(now.getHours() + 1); // Default to 1 hour from now
+      setScheduleDate(now.toISOString().split('T')[0]);
+      setScheduleTime(now.toTimeString().split(' ')[0].substring(0, 5));
     }
   }, [article]);
 
@@ -29,8 +29,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({ article, onClose, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!scheduleDate || !scheduleTime) {
-        alert("Please select a valid date and time.");
-        return;
+      alert("Please select a valid date and time.");
+      return;
     }
     const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
     if (scheduledDateTime.getTime() < Date.now()) {
@@ -50,9 +50,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({ article, onClose, 
           <div className="space-y-4">
             <div>
               <label htmlFor="date" className="block text-slate-300 font-semibold mb-2">Date</label>
-              <input 
-                type="date" 
-                id="date" 
+              <input
+                type="date"
+                id="date"
                 value={scheduleDate}
                 onChange={e => setScheduleDate(e.target.value)}
                 className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
@@ -60,8 +60,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({ article, onClose, 
             </div>
             <div>
               <label htmlFor="time" className="block text-slate-300 font-semibold mb-2">Time</label>
-              <input 
-                type="time" 
+              <input
+                type="time"
                 id="time"
                 value={scheduleTime}
                 onChange={e => setScheduleTime(e.target.value)}

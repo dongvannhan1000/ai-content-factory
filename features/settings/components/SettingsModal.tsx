@@ -1,6 +1,6 @@
 // components/SettingsModal.tsx (Đã cập nhật)
 import React, { useState, useEffect } from 'react';
-import { UserSettings } from '../types';
+import { UserSettings } from '../../../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -110,14 +110,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, currentSet
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
-      <div 
-        className="bg-slate-800 rounded-lg shadow-2xl p-8 max-w-2xl w-full h-[90vh] overflow-y-auto" 
+      <div
+        className="bg-slate-800 rounded-lg shadow-2xl p-8 max-w-2xl w-full h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-2xl font-bold text-cyan-400 mb-6">Settings</h2>
-        
+
         <div className="space-y-6">
-          
+
           <section>
             <h3 className="text-lg font-semibold text-white mb-4 border-b border-slate-700 pb-2">AI General</h3>
             <div className="space-y-4">
@@ -133,7 +133,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, currentSet
               {/* --- CẬP NHẬT 'name' VÀ 'value' --- */}
               {renderTextArea('vision.visionSystemPrompt', 'Vision System Prompt', 'e.g., Analyze this image...', 'Hướng dẫn cho AI khi phân tích ảnh.', settings.vision.visionSystemPrompt)}
               {renderTextField('vision.imagePromptSuffix', 'Image Prompt Suffix', 'e.g., 4k, photorealistic', 'Tự động thêm hậu tố vào prompt ảnh.', settings.vision.imagePromptSuffix)}
-              
+
               <div>
                 <label htmlFor="vision.imageAspectRatio" className="block text-sm font-semibold text-slate-300 mb-2">Image Aspect Ratio</label>
                 <select

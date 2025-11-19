@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { auth, db } from '../firebase';
+import { auth, db } from '../../../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -49,12 +49,12 @@ export const AuthPage: React.FC = () => {
 
   const renderFormFields = () => {
     if (authMode === 'forgotPassword') {
-        return (
-            <div>
-              <label htmlFor="email" className="block text-slate-300 font-semibold mb-2">Email Address</label>
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required />
-            </div>
-        );
+      return (
+        <div>
+          <label htmlFor="email" className="block text-slate-300 font-semibold mb-2">Email Address</label>
+          <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required />
+        </div>
+      );
     }
 
     return (
@@ -76,29 +76,29 @@ export const AuthPage: React.FC = () => {
           <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required />
         </div>
         <div>
-          <label htmlFor="password"className="block text-slate-300 font-semibold mb-2">Password</label>
+          <label htmlFor="password" className="block text-slate-300 font-semibold mb-2">Password</label>
           {/* FIX: Replaced redundant condition with `required` attribute. The password field is only rendered when not in 'forgotPassword' mode, so it's always required. */}
-          <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required/>
+          <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" required />
         </div>
       </>
     );
   };
-  
+
   const getButtonText = () => {
-      switch(authMode) {
-          case 'login': return 'Sign In';
-          case 'signup': return 'Create Account';
-          case 'forgotPassword': return 'Send Reset Email';
-      }
+    switch (authMode) {
+      case 'login': return 'Sign In';
+      case 'signup': return 'Create Account';
+      case 'forgotPassword': return 'Send Reset Email';
+    }
   }
 
   const getTitleText = () => {
-    switch(authMode) {
-        case 'login': return 'Sign In';
-        case 'signup': return 'Sign Up';
-        case 'forgotPassword': return 'Reset Password';
+    switch (authMode) {
+      case 'login': return 'Sign In';
+      case 'signup': return 'Sign Up';
+      case 'forgotPassword': return 'Reset Password';
     }
-}
+  }
 
 
   return (
@@ -120,15 +120,15 @@ export const AuthPage: React.FC = () => {
         </form>
         <div className="mt-6 text-center text-sm">
           {authMode === 'login' && (
-             <>
-                <button onClick={() => setAuthMode('signup')} className="text-cyan-400 hover:text-cyan-300">
-                    Need an account? Sign Up
-                </button>
-                <span className="mx-2 text-slate-500">|</span>
-                <button onClick={() => setAuthMode('forgotPassword')} className="text-cyan-400 hover:text-cyan-300">
-                    Forgot Password?
-                </button>
-             </>
+            <>
+              <button onClick={() => setAuthMode('signup')} className="text-cyan-400 hover:text-cyan-300">
+                Need an account? Sign Up
+              </button>
+              <span className="mx-2 text-slate-500">|</span>
+              <button onClick={() => setAuthMode('forgotPassword')} className="text-cyan-400 hover:text-cyan-300">
+                Forgot Password?
+              </button>
+            </>
           )}
           {authMode === 'signup' && (
             <button onClick={() => setAuthMode('login')} className="text-cyan-400 hover:text-cyan-300">

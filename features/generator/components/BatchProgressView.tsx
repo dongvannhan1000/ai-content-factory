@@ -1,9 +1,9 @@
 import React from 'react';
-import { GenerationJob } from '../types';
+import { GenerationJob } from '../../../types';
 
 interface BatchProgressViewProps {
-  jobs: GenerationJob[];
-  onCancel: (jobId: string) => void;
+    jobs: GenerationJob[];
+    onCancel: (jobId: string) => void;
 }
 
 interface JobProgressCardProps {
@@ -41,9 +41,9 @@ const JobProgressCard: React.FC<JobProgressCardProps> = ({ job, onCancel }) => {
                 </p>
             ) : (
                 <div className="w-full bg-slate-600 rounded-full h-2.5 mt-1">
-                    <div 
+                    <div
                         className="bg-cyan-500 h-2.5 rounded-full transition-all duration-500"
-                        style={{ width: `${percentage}%`}}
+                        style={{ width: `${percentage}%` }}
                     ></div>
                 </div>
             )}
@@ -53,18 +53,18 @@ const JobProgressCard: React.FC<JobProgressCardProps> = ({ job, onCancel }) => {
 
 
 export const BatchProgressView: React.FC<BatchProgressViewProps> = ({ jobs, onCancel }) => {
-  if (jobs.length === 0) {
-    return null;
-  }
+    if (jobs.length === 0) {
+        return null;
+    }
 
-  return (
-    <section className="bg-slate-800 p-8 rounded-lg shadow-xl">
-      <h2 className="text-2xl font-bold text-cyan-400 mb-6">Batch Generation Progress</h2>
-      <div className="space-y-4">
-        {jobs.map((job) => (
-            <JobProgressCard key={job.docId} job={job} onCancel={onCancel} />
-        ))}
-      </div>
-    </section>
-  );
+    return (
+        <section className="bg-slate-800 p-8 rounded-lg shadow-xl">
+            <h2 className="text-2xl font-bold text-cyan-400 mb-6">Batch Generation Progress</h2>
+            <div className="space-y-4">
+                {jobs.map((job) => (
+                    <JobProgressCard key={job.docId} job={job} onCancel={onCancel} />
+                ))}
+            </div>
+        </section>
+    );
 };

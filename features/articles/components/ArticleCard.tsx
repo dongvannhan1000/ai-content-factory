@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Article, GenerationMode, UserSettings } from '../types';
-import { generateImage, regenerateArticleText, regenerateImagePrompt } from '@/services/geminiService';
+import { Article, GenerationMode, UserSettings } from '../../../types';
+import { generateImage, regenerateArticleText, regenerateImagePrompt } from '../../../services/geminiService';
 
 interface ArticleCardProps {
   article: Article;
@@ -12,31 +12,31 @@ interface ArticleCardProps {
   settings: UserSettings;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ 
-  article, 
-  onSchedule, 
-  onDelete, 
+export const ArticleCard: React.FC<ArticleCardProps> = ({
+  article,
+  onSchedule,
+  onDelete,
   onPostNow,
   defaultSystemPrompt,
   mode,
-  settings 
+  settings
 }) => {
   const [isRegeneratingText, setIsRegeneratingText] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const [currentArticle, setCurrentArticle] = useState(article);
-  
+
   // Modal states
   const [showTextPromptModal, setShowTextPromptModal] = useState(false);
   const [showImagePromptModal, setShowImagePromptModal] = useState(false);
   const [customPrompt, setCustomPrompt] = useState(defaultSystemPrompt);
 
   const handleApiError = (error: any): string => {
-      console.error("API call failed:", error);
-      if (typeof error.message === 'string' && error.message.includes("Requested entity was not found")) {
-          return "Action failed (Error 404: Not Found).\n\nThis usually means the API key is invalid or deleted.\n\nPlease verify your API key in the Google Cloud Console.";
-      }
-      return "An unexpected error occurred. Please try again.";
+    console.error("API call failed:", error);
+    if (typeof error.message === 'string' && error.message.includes("Requested entity was not found")) {
+      return "Action failed (Error 404: Not Found).\n\nThis usually means the API key is invalid or deleted.\n\nPlease verify your API key in the Google Cloud Console.";
+    }
+    return "An unexpected error occurred. Please try again.";
   };
 
   const handleRegenerateTextClick = () => {
@@ -71,13 +71,13 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     setShowImagePromptModal(false);
     setIsRegeneratingImage(true);
     try {
-      
+
       const newImagePrompt = await regenerateImagePrompt(article, customPrompt, settings.vision.imagePromptSuffix);
       const newImageUrl = await generateImage(newImagePrompt);
       setCurrentArticle(prev => ({ ...prev, imageUrl: newImageUrl, imagePrompt: newImagePrompt }));
     } catch (error) {
-        const errorMessage = handleApiError(error);
-        alert(errorMessage);
+      const errorMessage = handleApiError(error);
+      alert(errorMessage);
     } finally {
       setIsRegeneratingImage(false);
     }
@@ -86,14 +86,14 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   const handlePostNowClick = () => {
     setIsPosting(true);
     onPostNow(currentArticle)
-        .catch((error: any) => {
-            console.error("Post Now action failed:", error);
-        })
-        .finally(() => {
-            setIsPosting(false);
-        });
+      .catch((error: any) => {
+        console.error("Post Now action failed:", error);
+      })
+      .finally(() => {
+        setIsPosting(false);
+      });
   };
-  
+
   return (
     <>
       <div className="bg-slate-800 rounded-lg shadow-lg overflow-hidden flex flex-col">
@@ -110,7 +110,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
             </p>
           )}
           <div className="mt-auto pt-4 border-t border-slate-700 flex flex-wrap gap-2 text-sm">
-            <button 
+            <button
               onClick={handleRegenerateTextClick}
               disabled={isRegeneratingText}
               className="flex-auto bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-3 rounded transition disabled:opacity-50"
